@@ -3,3 +3,5 @@
 ##Homework 0 (28.10.2020)
 
 [Here](files/mertkaan_homework_0.html) is my 5 interesting examples.
+
+[Here](files/360_1.html) is my report on 3 datasets about Turkey. 
