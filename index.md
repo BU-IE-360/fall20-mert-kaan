@@ -7,5 +7,5 @@
 [Here](files/360_1.html) is my report on 3 datasets about Turkey. 
 
 ## Homework 2 
-[Here](files/360_2.html) is my Homework 2 report.
+[Here](files/360_2.html) is my Homework 2 report.     \n
 [Here](files/360_2.Rmd) is my Homework 2 code.
