@@ -1,0 +1,208 @@
+---
+title: "Homework2"
+author: "Mert Kaan"
+date: "12/14/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r}
+library(knitr)
+library(zoo)
+library(tidyverse)
+library(viridis)
+library(hrbrthemes)
+library(plotly)
+library(tidyverse)
+library(forcats)
+library(ggplot2)
+library(data.table)
+library(fpp2)
+library(GGally)
+library(readxl)
+library(kableExtra)
+options(knitr.table.format = "html")
+library(DT)
+library(ggthemes)
+
+
+setwd("~/Desktop")
+getwd()
+```
+
+ <font size="6"> Introduction  </font>
+
+
+As the fluctuations on TRY progress recently, this devaluation affects a lot of aspects of our daily, future and current lives for all of our expenses are dependent on foreign currencies directly or indirectly. In order to investigate this effect more deeply, I have chosen 3 more data sets which might regard the devaluation in Turkey.
+
+First of the data sets is Total Export amount of Turkey. The idea is, increasing foreign currencies, decreasing domestically produced goods. Therefore I expect the export amount to rise as USD/TRY ratio rises.
+
+The second data sets includes base interest rates offered by The Central Bank of Turkey because of the fact that one important method for handling high devaluation rates is to offer high interest rate on domestic currency.
+
+The last data set includes Real Estate Price Index with 2017 as a base year for proportion. The reason behind choosing this data set is that, devaluation generally causes to inflation and money loosing value leads people to invest their money. And since real estate is one of the most popular area in Turkey which people invest in. I expect Real Estate Price Index and devaluation has a strong relation and would like to investigate whether or not my hypothesis is true.
+
+(All of the data has been collected in the interval between years 2017-2020 and the data are monthly observations.  )
+
+
+
+```{r}
+all_data <- read_excel("EVDS.xlsx")
+all_data <- as.data.frame(all_data)
+all_data$Tarih <- as.Date(all_data$Tarih , format = "%Y/%M/%D" )
+
+all_data <- data.frame(all_data)
+
+years <- year(all_data$Tarih)
+months <- month(all_data$Tarih)
+
+all_data <- data.frame( "Date" =all_data$Tarih , "Years" = years , "Months" = months , "Export" = all_data$Export ,  "USD/TRY" = all_data$USD , "InterestRate" = all_data$Interest.Rate , "Real Estate Price Index" = all_data$Real.Estate.Price.Index )
+
+
+head(all_data)
+
+
+
+
+#check trend terms and seasoniality
+
+```
+
+<font size="5"> USD/TRY </font> 
+
+
+On the two graphs below, I have plotted USD/TRY values histogram and line graph of the values divided by the year. I tried to visually detect if there is trend or seasonality. It is obvious that this value tends to increase as time passes but I visually did not detect any pattern or order.
+
+```{r}
+
+ggplot(all_data, aes(USD.TRY)) + geom_histogram(bins = 50, color = "dark blue" , fill = "blue") + facet_wrap(~Years, ncol = 2) + geom_density(alpha = 0.25 , fill = "white") + scale_x_continuous(lim = c(3,8))+ scale_y_continuous(lim = c(0,9)) + theme_clean() + labs(title = "USD/TRY", y="Density" , x = "USD/TRY") 
+
+
+gr1 <- all_data %>% 
+  filter( all_data$Years %in% c("2017", "2018", "2019" , '2020')) %>%
+  filter(Years!=2016)
+
+gr1 %>%
+  ggplot( aes(x= Months, USD.TRY , group=Years, color = factor(Years) )) +
+    geom_line()  
+
+ggplot(all_data) + geom_line(aes(x = Date , y = USD.TRY) , color = all_data$Years, group = all_data$Years)
+
+```
+
+<font size="5"> Interest Rates </font> 
+
+While monthly interest observations rates during 2017 lies between 10% and 15%, with foreign currencies get more expensive, it has been observed more than 15% between 2018 and 2020. But during year 2020, interest rates has been lowered which may be the reason for handling the economic results of the pandemic. But I have not used any data set about the current pandemic, therefore it might be harder to model the fall od interest rates on 2020 using current data.
+
+
+```{r}
+
+ggplot(all_data, aes(all_data$InterestRate)) + geom_histogram(bins = 30, color = "dark red" , fill = "red") + facet_wrap(~Years, ncol = 2) + geom_density(alpha = 0.5 , fill = "white") + scale_x_continuous(lim = c(5,26))+ scale_y_continuous(lim = c(0,4.5)) + theme_clean() + labs(title = "Interest Rates", y="Density" , x = "Interest Rates (%)") 
+
+
+gr1 <- all_data %>% 
+  filter( all_data$Years %in% c("2017", "2018", "2019" , '2020')) %>%
+  filter(Years!=2016)
+
+gr1 %>%
+  ggplot( aes(x= Months, InterestRate , group=Years, color = factor(Years) )) +
+    geom_line()
+
+
+ggplot(all_data) + geom_line(aes(x = Date , y = InterestRate) , color = all_data$Years, group = all_data$Years)
+
+```
+<font size="5"> Export Amount</font> 
+
+As a result of TRY and products originated in Turkey get cheaper, it can be expected to a rise in aggregate demand in these products by foreign countries. However, by looking at the histograms and the multiplied graph, we observe a decrease in total amount of export as the time pass.
+
+```{r}
+
+ggplot(all_data, aes(all_data$Export)) + geom_histogram(bins = 25, color = "dark green" , fill = "green") + facet_wrap(~Years, ncol = 2) + geom_density(alpha = 0.5 , fill = "white") + scale_x_continuous(lim = c(12000000,25000000))+ scale_y_continuous(lim = c(0,7	)) + theme_clean() + labs(title = "Total Export", y="Density" , x = "Export Amount") 
+
+
+gr1 <- all_data %>% 
+  filter( all_data$Years %in% c("2017", "2018", "2019" , '2020')) %>%
+  filter(Years!=2016)
+
+gr1 %>%
+  ggplot( aes(x= Months, Export , group=Years, color = factor(Years) )) +
+    geom_line()  
+
+ggplot(all_data) + geom_line(aes(x=Date , y= Export) , color = all_data$Years, group = all_data$Years)
+
+```
+
+<font size="5"> Real Estate Price Index </font> 
+
+Not only the high inflation rates causes costs and prices to rise, but also the idea of future inflation and falling interest rates drive people to invest their money more. As seen from the graphs, real estate price index is obviously rises as time passes but there is no visible seasonality yet. 
+
+```{r}
+
+ggplot(all_data, aes(all_data$Real.Estate.Price.Index)) + geom_histogram(bins = 25, color = "dark orange" , fill = "orange") + facet_wrap(~Years, ncol = 2) + geom_density(alpha = 0.5 , fill = "white") + scale_x_continuous(lim = c(85,150))+ scale_y_continuous(lim = c(0,10	)) + theme_clean() + labs(title = "Real Estate Price Index", y="Density" , x = "Real Estate Price Index") 
+
+
+gr1 <- all_data %>% 
+  filter( all_data$Years %in% c("2017", "2018", "2019" , '2020')) %>%
+  filter(Years!=2016)
+
+gr1 %>%
+  ggplot( aes(x= Months, Real.Estate.Price.Index , group=Years, color = factor(Years) )) +
+    geom_line()  
+
+ggplot(all_data) + geom_line(aes(x = Date , y = Real.Estate.Price.Index) , color = all_data$Years, group = all_data$Years)
+
+```
+
+<font size="5"> Correlations </font> 
+
+(pairs: Real Estate Price Index-Interest Rates, Real Estate Price Index-USD/TRY, Real Estate Price Index-Export Amount, Interest Rate-USD/TRY, Real Estate Price Index-Export Amount, USD/TRY-Export Amount )
+
+At first, high devaluation seems like it should rise interest rates, but from this correlation matrices we found out the correlation between USD.TRY/Interes Rates is almost 0. It might be because of the reason that interest rates does not only depend on the devaluation but also depends on all of the economic policies of the government, which probably includes lots of observations I did not take into considerations in this report. Due to this high number of effect, gathering more observations on longer years could help us more to investigate the relationship between these two.
+
+Like the relationship between interest rates and USD.TRY, we have almost 0 correlation between Interest Rates and Export Amount, which can be explained by Interest Rates' other dependencies which I did not included in this report.
+
+I hypothesized that rising USD/TRY ratio should increase the export amount but it turned out to be the reverse, TRY getting cheaper did not increase the export but decreased it. I also believe that this situation is a result of several some politic occurrences.
+
+Apart from these pairs, we can inspect a high positive correlation between Real Estate Price Index and USD/TRY raito. That strong relation can be explained by rational investment habits and high inflation. 
+
+
+```{r}
+ggpairs(all_data[ , -c(1,2,3)] )
+
+ggcorr(all_data[ , -c(1,2,3)] , low = "red"  , high =  "blue")
+
+```
+
+<font size="6"> Concluding </font> 
+
+Taking these data sets and results of these examinations into to considerations, we can conclude that some of my hypothesis about correlations between these data sets failed. 
+I think the reason why they failed is because of the fact that all of my data are greatly finance and therefore politics related data and recent ups and downs in political relationship between other countries have a great chance of affecting my data. 
+In order to examine more trusty investigation, it might be a a good choice to discard recent years' data or use much more wider data. 
+
+
+
+References
+https://evds2.tcmb.gov.tr/
+https://www.r-graph-gallery.com/index.html
+https://www.data-to-viz.com
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+
+
+
+
+
