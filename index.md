@@ -10,3 +10,9 @@
 [Here](files/360_2.html) is my Homework 2 report.  
 
 [Here](files/360_2.Rmd) is my Homework 2 code.
+
+
+## Homework 3 
+[Here](files/360_3.html) is my Homework 3 report.  
+
+[Here](files/360_3.Rmd) is my Homework 3 code.

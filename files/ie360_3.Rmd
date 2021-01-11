@@ -1,0 +1,348 @@
+---
+title: "HW3"
+author: "Mert Kaan"
+date: "1/9/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+
+
+
+```{r}
+library(knitr)
+#library(zoo)
+#library(tidyverse)
+#library(viridis)
+#library(hrbrthemes)
+library(plotly)
+library(forcats)
+library(ggplot2)
+library(data.table)
+#library(fpp2)
+#library(GGally)
+library(readxl)
+#library(kableExtra)
+options(knitr.table.format = "html")
+#library(DT)
+#library(ggthemes)
+library(forecast)
+```
+
+
+```{r}
+setwd("~/Desktop")
+getwd()
+```
+
+<font size="6"> Introduction  </font>
+
+All of the economic elements, indicators of economical operations of a single country affect and are dependent each other. That means the outcomes of any economical variable is a complex function of some of the other internal and extarnal ecomnomic variables. And in this model, in order to estimate the data, I collect the monthly data of GDP, Interest Rate, Production Index, Unemployment Rate, Expected Inflation and the total number of established companies for I thought this variables may affect the number of liquified company.
+The idea was; low GDP, high interest rates, low production index, high unemployment rate and high inflation may couse companies to liquidify and since the number of liquified companies is a function of the number of total companies, I used the number of established companies which is a element of the difference of the number of total companies.
+
+
+
+
+<font size="6"> The Data, Total Number Liquiified Companies in a Month (2012-2020) </font> 
+
+The given data consist of total number of liquified companies in each month between the years 2012 and 2020. As can be seen, it is a highly cyclic data and seems to have a high autocorrelation for yearly period. While examining the data, I assumed that this cyclic patterns may coused by legal issues concerning the authority to liquidify a company in a particular year. Therefore the first thing I have done in order to estimate the data was to take advantage of this pattern by fittig a linear model by sing only month data. The result yielsd as;
+
+
+```{r}
+all_data <- read_excel("EVDS.xlsx")
+all_data <- as.data.table(all_data)
+
+all_data$Date <- as.Date(all_data$Date , format = "%D-%M-%Y" )
+
+
+all_data[ , Year := year(all_data$Date)]
+all_data$Year <- as.factor(all_data$Year)
+
+all_data[ , Month := month(all_data$Date)]
+all_data$Month <- as.factor(all_data$Month)
+
+head(all_data)
+
+ggplot(all_data, aes(x = all_data$Date , y = all_data$Liquified)) + geom_line( color = "blue") + labs(title="Total Liquified", subtitle="Between 2012-2020")  
+
+
+
+```
+
+
+
+
+
+
+
+<font size="6"> Model 1  </font> 
+
+The Model 1 yields "231.5" standart error, the month input is clearly have a affect on the data to be estimated. Although the residuals follow an almost normal distribution, they have an evident autocorrelation which states that the model is incomplete. 
+
+```{r}
+#1
+model1 <- lm(all_data$Liquified~ all_data$Month , data = all_data)
+summary(model1)
+
+ggplot(all_data, aes(x = all_data$Date , y = fitted(model1))) + geom_line( color = "dark blue") + labs(title="Model1 Fitted", subtitle="Month Considered")    
+
+checkresiduals(model1)
+
+all_data[ , residuals1 := residuals(model1)]
+
+#1
+```
+
+
+
+
+
+<font size="5"> Finding CrossCorrelations, Model 1 </font> 
+
+Then, I have plotted the crosscorrelation functions between residuals of model 1 and all of the other possible estimators. I have notice that the highes amount of crosscorrelation was between residuals and Production Index with lag 4 which means the Production Amount of any months seems to affect the total number of liquified companies 4 months later. Then I have shifted the Production Index data by 4 lags to use it as a regressor in my model 2.
+
+```{r}
+par(mfrow = c(3,2))
+ccf(all_data$residuals1, all_data$GDP)
+ccf(all_data$residuals1, all_data$`Interest Rate`)
+ccf(all_data$residuals1, all_data$`Production Index (2015 = 100)`)
+ccf(all_data$residuals1, all_data$`Unemployment Rate`)
+ccf(all_data$residuals1, all_data$`Expected Inflation`)
+ccf(all_data$residuals1, all_data$`Established (Total)`)
+
+```
+
+
+```{r}
+all_data <-  all_data[ , Production_l_4 := shift(all_data$`Production Index (2015 = 100)` , n=4L, fill = 74 ) ]
+
+#all_data$Production_l_4 <-all_data$Production_l_4 - mean(all_data$Production_l_4)
+
+```
+
+
+
+
+
+
+
+<font size="6"> Model 2  </font> 
+
+The Model 2 yields "208.3" standart error, which states that the model is improved comparing to previous model and the residuals seems to ddistributed by normal distribution as well. But the residuals seems to have high autocorrelation as well as Model 1.
+
+```{r}
+#2
+model2 <- lm(all_data$Liquified~ all_data$Month + all_data$Production_l_4 , data = all_data)
+summary(model2)
+
+ggplot(all_data, aes(x = all_data$Date , y = fitted(model2))) + geom_line( color = "dark blue") + labs(title="Model2 Fitted", subtitle="Month, Production(4lag) Considered")    
+
+checkresiduals(model2)
+
+all_data[ , residuals2 := residuals(model2)]
+
+#2
+```
+
+
+
+
+<font size="5"> Finding CrossCorrelations, Model 2  </font> 
+
+Similar to the previous steps, I have plotted ccrosscorrelation plots in order to find a data set to relate with the residuals of Model 2. Then I found that Total Number of Established Companies have high crosscorrelation with total number of Established Companies wiht 0 lag, so I have decided to add this data set as a regressor in the Model 3.
+
+
+```{r}
+par(mfrow = c(3,2))
+ccf(all_data$residuals2, all_data$GDP)
+ccf(all_data$residuals2, all_data$`Interest Rate`)
+ccf(all_data$residuals2, all_data$`Unemployment Rate`)
+ccf(all_data$residuals2, all_data$`Expected Inflation`)
+ccf(all_data$residuals2, all_data$`Established (Total)`)
+
+
+
+```
+
+
+
+
+<font size="6"> Model 3  </font>
+
+The Model 3 yields "193" standart error, which means the model is improved compared to previous ones. However we reject the hypotiesis that the data is autocorrelated with Breusch-Godfrey test, as can be seen from the 1 lag autocorrelation plot as well. Therefore we may need to add more regressor into the model.
+
+```{r}
+#3
+model3 <- lm(all_data$Liquified~ all_data$Month + all_data$Production_l_4 + all_data$`Established (Total)` , data = all_data)
+summary(model3)
+
+ggplot(all_data, aes(x = all_data$Date , y = fitted(model3))) + geom_line( color = "dark blue") + labs(title="Model3 Fitted", subtitle="Month, Production(4lag), Established Considered")    
+
+checkresiduals(model3)
+
+all_data[ , residuals3 := residuals(model3)]
+
+#3
+```
+
+
+
+<font size="5"> Finding CrossCorrelations, Model 3 </font>
+
+In order to find the most suitable dataset to explain autocorrelated residuals obtained from Model 3, I have plotted crosscorrelation plots with the candidate datasets and could not find any significant autocorrelation. Therefore, since the last residuals obtained have a high 1 lag autocorrelation, states that last month's data have affect of current month's data which could not be explained by the regressors I have used, I have added previous month's data into the regression model in the Model 4.
+
+```{r}
+par(mfrow = c(2,2))
+ccf(all_data$residuals3, all_data$GDP)
+ccf(all_data$residuals3, all_data$`Interest Rate`)
+ccf(all_data$residuals3, all_data$`Unemployment Rate`)
+ccf(all_data$residuals3, all_data$`Expected Inflation`)
+
+
+all_data <-  all_data[ , Previous := shift( x = all_data$Liquified , n = 1L , fill = 2270 ) ]
+
+
+```
+
+
+
+<font size="5"> Model 4  </font> 
+
+The Model 4 yields "163.5" standart error, as an better model. But as can be seen, we might conclude that residuals seem to have still some autocorrelation.
+
+```{r}
+#4
+
+model4<<- lm(all_data$Liquified~ all_data$Month + all_data$Production_l_4 + all_data$`Established (Total)` + all_data$Previous , data = all_data)
+summary(model4)
+
+ggplot(all_data, aes(x = all_data$Date , y = fitted(model4))) + geom_line( color = "dark blue") + labs(title="Model3 Fitted", subtitle="Month, Production(4lag), Established, Liquiied(1lag) Considered")    
+
+checkresiduals(model4)
+
+all_data[ , residuals4 := residuals(model4)]
+
+
+
+#4
+```
+
+
+
+
+<font size="4"> Finding CrossCorrelations, Model 4  </font> 
+
+To statically inspect the relation between the crosscorrelation between residuals and remaining candidate regressors, I plotted crosscorrelation plots just like the previous steps. And the most prominent relation is between residuals and Total number of Established companies with 1 lag, which sounds sensible since some of the recently established companies may liquidify after just one month. So I have added this 1 lagged information as a regressor to the model and have built Model 5. 
+
+```{r}
+par(mfrow = c(3,2))
+ccf(all_data$residuals4, all_data$GDP)
+ccf(all_data$residuals4, all_data$`Interest Rate`)
+ccf(all_data$residuals4, all_data$`Unemployment Rate`)
+ccf(all_data$residuals4, all_data$`Expected Inflation`)
+ccf(all_data$residuals4, all_data$`Established (Total)`)
+
+
+all_data <-  all_data[ , Established_l_1 := shift( x = all_data$`Established (Total)` , n = 1L , fill = 5000 ) ]
+
+
+
+```
+
+
+
+<font size="6"> Model 5  </font> 
+
+The Model 5 yields "147.5" standart error, less standart error than previous models. And by examining Breusch-Godfrey test we fail to reject the hypotesis that there is autocorrelation within the residuals, thus our residuals seems to fit our multilinear regression residuals assumptions. 
+
+```{r}
+#5
+
+model5<<- lm(all_data$Liquified~ all_data$Month + all_data$Production_l_4 + all_data$`Established (Total)` + all_data$Previous + all_data$Established_l_1 , data = all_data)
+summary(model5)
+
+ggplot(all_data, aes(x = all_data$Date , y = fitted(model5))) + geom_line( color = "dark blue") + labs(title="Model5 Fitted", subtitle="Month, Production(4lag), Established, Liquiied(1lag), Established(1lag) Considered")    
+
+checkresiduals(model5)
+
+all_data[ , residuals5 := residuals(model5)]
+
+#5
+```
+
+
+
+<font size="6"> Visual Examination of Model 5 vs Actual Data </font> 
+
+Below, I have plotted two graphs to examine performance of the final model. Residuals seem to randomly scattered for every observation except for the first months of years 2013, 2014 and 2015 where model underpredicts. But I could not find valid reason for this observations to have larger value or being outlyer, therefore I choose to not add an external or internal regressor to explain this behaivour in order to avoid overfitting.
+
+```{r}
+
+all_data %>%
+  ggplot(aes(x= Liquified, y=fitted(model5))) + 
+  geom_point( color = "red") +
+  geom_abline(slope=1, intercept=0 , color  = "blue")
+
+```
+
+
+```{r}
+
+all_data[ , fitted := fitted(model5)]
+
+ggplot()+
+    geom_line(data=all_data , aes(y= Liquified  ,x= Date , colour="blue"),size=1 )+
+    geom_line(data=all_data , aes(y=  fitted ,x= Date , colour="orange"),size=1) +
+    scale_color_discrete(name = "Fitted vs Actual", labels = c("Actual", "Fitted"))
+
+```
+
+
+
+
+<font size="6"> Conclusion and Prediction </font> 
+
+To conclude, while trying to fit a model for my Total Number of Monthly Liquified Company data, I collected some datasets which I thought related to the data I would like to predict. The method was a basic constructive algorithm which decides what dataset to add by checking crosscorrelations with previous models' residuals. 
+
+<font size="5"> The Prediction </font> 
+
+At the end of the modelling, I have obtained the values below. To predict the number of liquidated companies in December 2020 I need the data; 
+Production Index (August 2020), Total Number of Established Companies (December 2020), Total Number of Liquified Companies (November 2020), Total Number of Established Companies (November 2020). Which are 115.16, 10,419.00, 986, 8.782,00 recpectively. And by multiplying this with the estimated slopes of Model 5 and add the intercept, the estimate for total number of liquidified companies (December 2020) is 2683.779 as an estimate.
+
+
+```{r}
+
+summary(model5)
+
+```
+
+
+
+References https://evds2.tcmb.gov.tr
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
