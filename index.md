@@ -13,6 +13,6 @@
 
 
 ## Homework 3 
-[Here](files/360_3.html) is my Homework 3 report.  
+[Here](files/ie360_3.html) is my Homework 3 report.  
 
-[Here](files/360_3.Rmd) is my Homework 3 code.
+[Here](files/ie360_3.Rmd) is my Homework 3 code.
