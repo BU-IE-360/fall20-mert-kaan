@@ -1,0 +1,291 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r}
+
+setwd("~/Desktop")
+getwd()
+
+library(data.table)
+library(ggplot2)
+library(lubridate)
+library(readxl)
+library(forecast)
+library(urca)
+
+```
+
+
+
+<font size="6"> Introduction  </font>
+
+The ability to predict and guide the factors such as consumption and production are one of the steps to observe the market and plan ahead. In this analysis I have manipulated the data of daily electric consumption data of Turkey.
+
+
+
+```{r}
+daily_data <- read.csv("homework_4.csv")
+#daily_data = daily_datadd[,c(1,2,3)]
+
+
+#daily_data = data.table(data[ , c(1:3)])
+
+#format =  "%d.%m.%y"
+
+
+daily_data = as.data.table(daily_data)
+daily_data[, index := c(1:.N)]
+
+
+daily_data1 = daily_data[ index%%24 == 1 ]
+
+daily_data = daily_data1
+
+
+daily_data[, Month := as.factor(month(Date))]
+daily_data[, Day := as.factor(day(Date))]
+
+
+daily_data$Date = as.Date(daily_data$Date)
+daily_data
+
+ggplot(daily_data) + geom_line(aes( x= Date , y = Consumption) , color = "dark blue") + labs(title = "Daily Electric Consumption  ", x = " Date ", y = " Consumption ") 
+
+acf(daily_data$Consumption)
+
+
+
+```
+
+
+<font size="6"> The Data  </font>
+
+As can be seen from the graphs, we have a highly seasonilized data over the months and weeks, therefore we observe high autocorrelations over the data set. 
+
+
+<font size="6"> Seasonal Differencing  </font>
+
+In order to remove the affect of obvious weekly seasonality, I have shifted the consumption data with 7 lags and checked the differences between previous week. Then I added this differences to a new column. Below, there is the graph of 7 lag differencing.
+
+```{r}
+
+Box.test(daily_data$Consumption, lag=10, type="Ljung-Box")
+#it is not stationary
+
+
+daily_data[ , lag7 := shift(x = daily_data$Consumption , n = 7L , fill = mean(daily_data$Consumption))]
+
+daily_data[ , lag7_diff := daily_data$Consumption - daily_data$lag7]
+
+
+ggplot(daily_data) + geom_line( aes( y = daily_data$lag7_diff , x = daily_data$Date) , color = "dark red") + labs(title = "Weekly Differenced Consumption   ", x = "Date  ", y = " Consumption ") 
+
+
+
+
+
+```
+
+<font size="6"> Handling the Outlyers  </font>
+
+For we have studied the same data set for the project as well, I have determined which dates have extraordinary behavior for being a special date, and then replace the special dates' observation with the exactly previous weeks' observations. 
+Yielding graph is as follows,
+
+```{r}
+daily_data[  lag7_diff < - 5050]$Consumption = daily_data[  lag7_diff < - 5050]$Consumption - daily_data[  lag7_diff < - 5050]$lag7_diff
+
+
+daily_data[ , lag7 := shift(x = daily_data$Consumption , n = 7L , fill = mean(daily_data$Consumption))]
+
+daily_data[ , lag7_diff := daily_data$Consumption - daily_data$lag7]
+
+ggplot(daily_data) + geom_line(aes( x= Date , y = Consumption) , color = "dark blue") + labs(title = "Daily Electric Consumption  ", x = " Date ", y = " Consumption ") 
+
+```
+
+
+<font size="6"> Checking the Stationary and Autocorrelations  </font>
+
+By checking one week differenced series by using KPSS test and Ljung-Box test, we can conclude that it might be considered as Stationary, but it still has some degree of autocorrelation which can be utilized in order to make more accurate predictions.
+
+```{r}
+
+ggplot(daily_data) + geom_line( aes( y = daily_data$lag7_diff , x = daily_data$Date) , color = "dark blue")
+
+summary(ur.kpss(daily_data$lag7_diff) )
+Box.test(daily_data$lag7_diff, lag=30, type="Ljung-Box")
+
+acf(daily_data$lag7_diff)
+```
+
+<font size="6"> ARIMA Model 1  </font>
+
+Since we observed high autocorrelations up to lag 7 on the 7 lag shifted difference data, in my arima model I have used autocorrelation lags as 14, and checked the residuals.
+
+```{r}
+model1 = arima(daily_data$Consumption , order = c(14,0,0))
+summary(model1)
+
+
+daily_data[, fitted1 := fitted(model1)]
+daily_data[, residuals1 := residuals(model1)]
+
+
+```
+
+
+
+
+<font size="6"> ARIMA Model 1 Residuals  </font>
+
+Now we are more confident that this residuals have more stationarity behaivour than previous 7lag differenced data. But the residuals of this model has still have autocorrelation which means that our model has potential to improve.
+
+```{r}
+acf(residuals(model1))
+
+Box.test(daily_data$residuals1, lag=7, type="Ljung-Box")
+summary(ur.kpss(daily_data$residuals1) )
+
+daily_data[ , residuals1 := residuals(model1)]
+daily_data[ , fitted1 :=  fitted(model1)]
+
+acf(residuals(model1))
+
+
+```
+
+
+<font size="6"> ARIMA Model 2  </font>
+
+This time, in order to fit a prediction for the residuals of the previous model, I have built a arima model for the residuals of the previous model's residuals. It was a auto arima model, which let R to determine the parameters of arima function and the determined parameters was (2,0,2).
+
+```{r}
+
+model2 = auto.arima(daily_data$residuals1 )
+summary(model2)
+
+
+daily_data[ , residuals2 := residuals(model2) ]
+daily_data[ , fitted2 :=   fitted(model1) + residuals(model2)]
+
+
+
+
+```
+
+
+
+<font size="6"> ARIMA Model 2 Residuals  </font>
+
+By investigating the results of the test made for residuals of the latest model, we can be more confident that the residuals are more stationary, means that the additive model improved, but leaving a slight autocorrelation on the residuals.
+
+
+```{r}
+
+
+Box.test( (daily_data$residuals2  )  , lag=7, type="Ljung-Box")
+summary(ur.kpss(daily_data$residuals2) )
+
+acf(daily_data$residuals2)
+
+```
+
+<font size="6"> ARIMA Model 3   </font>
+
+In order to get rid of slight autocorrelation left from the model2, I have built another auto arima model on the residuals of model 2, named model 3 and the choosen parameters of the model are (3,0,2).
+
+
+```{r}
+
+model3 =  auto.arima(daily_data$residuals2)
+summary(model3)
+
+daily_data[ , residuals3 := residuals(model3)  ]
+daily_data[ , fitted3 :=  fitted2 + residuals(model3)]
+
+acf(daily_data$residuals3)
+
+
+```
+
+
+```{r}
+
+model4 =  arima(daily_data$residuals3 , order =  c(1,0,0))
+summary(model4)
+
+daily_data[ , residuals4 := residuals(model4)  ]
+daily_data[ , fitted4 :=  fitted3 + residuals(model4)]
+
+
+#acf(daily_data$residuals3)
+
+
+```
+
+
+<font size="6"> Testing the Accuracy   </font>
+
+In order to test this model, I built a naive forecasting model in order to compare with and checked their test statistics.
+
+```{r}
+
+daily_data[ , previous := shift( x = Consumption , n = 1L , fill = mean(Consumption))]
+
+# %% index > 34896]
+test = daily_data[ index < 35210 & index > 34896  ]
+
+test_1= test[ , c(3,16)]
+test_1 = data.table(test_1)
+test_1
+
+test_2= test[ , c(3,17)]
+test_2 = data.table(test_2)
+test_2
+
+```
+
+
+
+
+```{r}
+
+output <- function(actual, forecasted){
+  n=length(actual)
+  error = actual-forecasted
+  mean=mean(actual)
+  sd=sd(actual)
+  bias = sum(error)/sum(actual)
+  mape = sum(abs(error/actual))/n
+  mad = sum(abs(error))/n
+  wmape = mad/mean
+  l = data.frame(n,mean,sd,bias,mape,mad,wmape)
+  return(l)
+}
+
+#daily_data
+#output(test_1$Consumption[1:14], test_1$fitted4[1:14])
+#output(test_2$Consumption[1:14], test_2$previous[1:14])
+
+
+
+```
+
+Test results for actual model and naive model are as,
+n     mean        sd         bias         mape         mad       wmape
+14	33119.63	1665.587  	0.001842927	   0.03927153	 1258.182	  0.037989
+14	33119.63	1665.587	 -0.0009408964   0.03997456  1289.901	  0.03894671
+
+
+<font size="6"> Consclusion   </font>
+
+After checking the error statisticts, comparing with a naive prediction model of previous day, we have a slightly better "wmape" value, states that our model is better than naive forecast and it is beneficial to use this prediction model. 
+
+
+
+<font size="6"> References   </font>
+https://seffaflik.epias.com.tr/transparency/tuketim/gerceklesen-tuketim/gercek-zamanli-tuketim.xhtml (Consumption Data)
+
