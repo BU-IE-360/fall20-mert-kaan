@@ -19,6 +19,6 @@
 
 
 ## Homework 4 
-[Here](files/HW4.html) is my Homework 3 report.  
+[Here](files/HW4.html) is my Homework 4 report.  
 
-[Here](files/HW4.Rmd) is my Homework 3 code.
+[Here](files/HW4.Rmd) is my Homework 4 code.
