@@ -1,0 +1,644 @@
+---
+title: "ie360 Project"
+author: "Mert Kaan - Hakan Ekiz"
+date: "1/28/2021"
+output: html_document
+---
+
+
+# Inroduction
+
+In this project we aim to estimate the amount of electricity consumption in Turkey. While doing it, we have access to hourly consumption data in 7 big cities in Turkey. We built what we built as a forecasting model by using only dates, previous consumption observations and these temperature values, forecasted temperatures for future values.
+
+
+```{r, include=TRUE, echo=FALSE}
+output <- function(actual, forecasted){
+  n=length(actual)
+  error = actual-forecasted
+  mean=mean(actual)
+  sd=sd(actual)
+  bias = sum(error)/sum(actual)
+  mape = sum(abs(error/actual))/n
+  mad = sum(abs(error))/n
+  wmape = mad/mean
+  l = data.frame(n,mean,sd,bias,mape,mad,wmape)
+  return(l)
+}
+
+```
+
+```{r, include=FALSE}
+
+setwd("~/Desktop")
+getwd()
+
+library(data.table)
+library(ggplot2)
+library(lubridate)
+library(readxl)
+library(forecast)
+library(GGally)
+
+require(jsonlite)
+require(httr)
+
+```
+
+```{r, include=FALSE}
+
+require(jsonlite)
+require(httr)
+require(data.table)
+
+get_token <- function(username, password, url_site){
+    
+    post_body = list(username=username,password=password)
+    post_url_string = paste0(url_site,'/token/')
+    result = POST(post_url_string, body = post_body)
+
+    # error handling (wrong credentials)
+    if(result$status_code==400){
+        print('Check your credentials')
+        return(0)
+    }
+    else if (result$status_code==201){
+        output = content(result)
+        token = output$key
+    }
+
+    return(token)
+}
+
+get_data <- function(start_date='2020-03-20', token, url_site){
+    
+    post_body = list(start_date=start_date,username=username,password=password)
+    post_url_string = paste0(url_site,'/dataset/')
+    
+    header = add_headers(c(Authorization=paste('Token',token,sep=' ')))
+    result = GET(post_url_string, header, body = post_body)
+    output = content(result)
+    data = data.table::rbindlist(output)
+    data[,event_date:=as.Date(event_date)]
+    data = data[order(event_date)]
+    return(data)
+}
+
+
+send_submission <- function(predictions, token, url_site, submit_now=F){
+    
+    format_check=check_format(predictions)
+    if(!format_check){
+        return(FALSE)
+    }
+    
+    post_string="list("
+    for(i in 1:nrow(predictions)){
+        if(i<nrow(predictions)){
+            post_string=sprintf("%s%s,",post_string,predictions$forecast[i])
+        } else {
+            post_string=sprintf("%s%s)",post_string,predictions$forecast[i])
+        }
+    }
+    
+    submission = eval(parse(text=post_string))
+    json_body = jsonlite::toJSON(submission, auto_unbox = TRUE)
+    submission=list(submission=json_body)
+    
+    print(submission)
+    # {"31515569":2.4,"32939029":2.4,"4066298":2.4,"6676673":2.4,"7061886":2.4,"85004":2.4} 
+
+    if(!submit_now){
+        print("You did not submit.")
+        return(FALSE)      
+    }
+    
+
+    header = add_headers(c(Authorization=paste('Token',token,sep=' ')))
+    post_url_string = paste0(url_site,'/submission/')
+    result = POST(post_url_string, header, body=submission)
+    
+    if (result$status_code==201){
+        print("Successfully submitted. Below you can see the details of your submission")
+    } else {
+        print("Could not submit. Please check the error message below, contact the assistant if needed.")
+    }
+    
+    print(content(result))
+    
+}
+
+check_format <- function(predictions){
+    
+    if(is.data.frame(predictions) | is.data.frame(predictions)){
+        if('forecast' %in% names(predictions)){
+            if(nrow(predictions)==24){
+                if(all(is.numeric(predictions$forecast))){
+                    print("Format OK")
+                    return(TRUE)
+                } else {
+                    print("forecast information is not numeric")
+                    return(FALSE)                
+                }
+            } else {
+                print("Forecasts for 24 hours should be provided, current number of rows:")
+                print(nrow(predictions))
+                return(FALSE)     
+            }
+        } 
+    } else {
+        print("Wrong format. Please provide data.frame or data.table object")
+        return(FALSE)
+    }
+    
+}
+
+```
+
+```{r, include=FALSE}
+subm_url = 'http://46.101.124.77'
+
+u_name = "Group5"
+p_word = "IT6O4E630YLdXA7N"
+submit_now = FALSE
+
+username = u_name
+password = p_word
+
+token = get_token(username=u_name, password=p_word, url=subm_url)
+data_h = get_data(token=token,url=subm_url)
+
+
+
+data_h = as.data.table(data_h)
+data_h[ , event_date := as.Date(event_date)]
+data_h = data_h[order(event_date,event_hour)]
+data_h
+
+colnames(data_h) = c( "Date" , "Hour" , "Consumption" , "T_1" , "T_2" , "T_3" , "T_4" , "T_5" , "T_6" , "T_7" )
+data_h
+
+```
+
+
+# Data
+
+In order to use data more efficiently, we did some manipulations such as converting double hour values into factors, converting consumption into numeric, numbering every observation and sorting the data an increasing order with respect to its date.
+
+```{r, include=TRUE, echo=FALSE}
+
+#data <- read_excel("all_data.xlsx" )
+#data <- read_excel("all_data_2019.xlsx")
+#data <- read_excel("28ocak.xlsx")
+data1 <- read.csv("360_project.csv")
+
+data1 = as.data.table(data1)
+
+data1[,Date:=as.Date(Date)]
+
+
+#data$T_1 = as.numeric(data$T_1)
+#data$T_2 = as.numeric(data$T_2)
+#data$T_3 = as.numeric(data$T_3)
+#data$T_4 = as.numeric(data$T_4)
+#data$T_5 = as.numeric(data$T_5)
+#data$T_6 = as.numeric(data$T_6)
+#data$T_7 = as.numeric(data$T_7)
+
+data  = rbind(data1 , data_h)
+data = data[order(Date, Hour , decreasing = FALSE)]
+
+data[,index:=c(1:.N)]
+
+data[,Average_T_1 :=list(mean(T_1,na.rm=T)),by=list(Date)]
+data[,Average_T_2 :=list(mean(T_2,na.rm=T)),by=list(Date)]
+data[,Average_T_3 :=list(mean(T_3,na.rm=T)),by=list(Date)]
+data[,Average_T_4 :=list(mean(T_4,na.rm=T)),by=list(Date)]
+data[,Average_T_5 :=list(mean(T_5,na.rm=T)),by=list(Date)]
+data[,Average_T_6 :=list(mean(T_6,na.rm=T)),by=list(Date)]
+data[,Average_T_7 :=list(mean(T_7,na.rm=T)),by=list(Date)]
+
+
+data$Consumption = as.numeric(data$Consumption)
+data[,Month:=as.factor(month(Date))]
+
+data[,Day:=weekdays(Date)]
+
+data$Day = as.factor(data$Day)
+data$Hour = as.factor(data$Hour)
+
+
+head(data)
+
+
+```
+
+# Forecasting Models
+
+### Model1
+
+In our Model1 we use daily average temperature values of 7 different locations and Hour information. After creating histogram of residuals of model 1 we can see that this model can not be sufficient since residuals of it does not behave symmetric. This model does not include seasonality related factors such as effect of month or index. We should add them to improve our model since we observe evident proof of seasonality in our residuals.
+
+
+```{r}
+
+model1 = lm(data$Consumption~ data$Average_T_1 +  data$Average_T_2 + data$Average_T_3 +data$Average_T_4 +data$Average_T_5 +data$Average_T_6 +data$Average_T_7 + data$Hour  )
+summary(model1)
+data[, residuals1 := residuals(model1)]
+data[, prediction1 := fitted(model1)]
+
+
+hist(residuals(model1) , breaks = 100)
+
+```
+
+### Model2
+
+In our Model2 we use hourly temperature values of 7 different locations, month,day, hour information and index.It is better than model1 in terms of deviation of our answers, but still it is not sufficient since our residuals do not follow normal distribution. We are not using the effects of previous consumption values and this deficiency may be causing high autocorrelations between the residuals of our models. By using some of the previous values, our model can predict the next values more accurately. To determine which dates' values will be used we should look the pacf of model2 residuals. 
+
+```{r}
+
+model2 = lm(data$Consumption~ data$T_1 + data$T_2 + data$T_3 + data$T_4 + data$T_5 + data$T_6 + data$T_7  + data$index + data$Month + data$Day + data$Hour )
+summary(model2)
+data[, residuals2 := residuals(model2)]
+data[ , prediction2 := fitted(model2)]
+
+hist(residuals(model2) , breaks= 100)
+```
+
+
+Plotted the acf and pacf of residuals of model2 for determine the lags. After examining the lag values we can see that there is correlation for daily and weekly base lag values. Because we can not use the previous day information for the prediction of the next day we did use 2 day lag and 1 week lag values. So added new columns by shifting the consumption values accordingly
+
+
+## Fixing the Outliers
+
+Since we knew the reason behind being an outlier observation in the case, being observed during a special day, and we knew that in the suration of this project we will not face such a special day, what we did was discarding this special days' observations by replacing their consumption values by their predictions we have made from out last model.
+
+```{r}
+#ggplot(data) + geom_line(aes( x = Date , y = residuals2) , color = "dark blue")
+#ggplot(data) + geom_line(aes( x = Date , y = Consumption) , color = "dark blue")
+data[ data$residuals2 < -7000]$Consumption = data[ data$residuals2 < -7000]$prediction2
+data[ data$residuals2 > 8000]$Consumption = data[ data$residuals2 > 8000]$prediction2
+#ggplot(data) + geom_line(aes( x = Date , y = Consumption) , color = "dark blue" )
+```
+
+
+### Model3
+
+In our Model3 we use  temperature values of 7 different locations, month,day, hour information, index and prevday2, indicates that not the 48 lags data.In the model 3 we can examine the effect of prevday2 in addition to model2 as an evident regressor. It is better than model2 but still open to improvements.
+
+```{r}
+
+data[,prevday2:=shift(x=data$Consumption,n=48L,fill=mean(data$Consumption))]
+data[,prevweek:=shift(x=data$Consumption,n=168L,fill=mean(data$Consumption))]
+model3 = lm(data$Consumption~data$Day + data$T_1 + data$T_2 + data$T_3 + data$T_4 + data$T_5 + data$T_6 + data$T_7   + data$index + data$Month + data$Hour  + data$prevday2  )
+summary(model3)
+data[, residuals3 := residuals(model3)]
+data[, prediction3 := fitted(model3)]
+
+hist(residuals(model3),  breaks = 100)
+
+```
+
+
+
+
+### Model4
+
+In our Model4 we use daily mean temperature values of 7 different locations, month,day, hour information, index, prevday2 and prevweek.In the model 4 we can examine the effect of prevweek in addition to model2. It is better than model2 but still it is not sufficient. We should fix the extreme values to improve the model accuracy. 
+
+```{r}
+model4 = lm(data$Consumption~data$Day + data$Average_T_1 +  data$Average_T_2 + data$Average_T_3 +data$Average_T_4 +data$Average_T_5 +data$Average_T_6 +data$Average_T_7 + data$index + data$Month + data$Hour + data$prevweek +data$prevday2 )
+summary(model4)
+data[ , residuals4 := residuals(model4)]
+data[ , prediction4 := fitted(model4)]
+
+hist(residuals(model4) , breaks =  100)
+```
+
+
+```{r}
+data[residuals4 < -5000]$Consumption = data[residuals4 < -5000]$prediction4 
+data[residuals4 > 55000]$Consumption = data[residuals4 > 5500]$prediction4 
+
+```
+
+### Model5:
+
+As model5, we built the same model by model4 by using the exact same regressors. The difference is that we only used same regressors after fixing the outlier points and wanted to express the regressors' new effects.
+Because our linear regression assumptions obligate us to have no autocorrelations on the residuals, we checked autocorrelation plot of the residuals of the model5 and realized high level on 160lag.
+
+```{r}
+model5 = lm(data$Consumption~data$Day + data$Average_T_1 +  data$Average_T_2 + data$Average_T_3 +data$Average_T_4 +data$Average_T_5 +data$Average_T_6 +data$Average_T_7 + data$index + data$Month + data$Hour  + data$prevweek  + data$prevday2)
+summary(model5)
+data[ , residuals5 := residuals(model5)]
+data[ , prediction5 := fitted(model5)]
+
+hist(residuals(model5) , breaks = 100)
+
+acf(residuals(model5) , lag.max = 170)
+
+```
+
+
+
+
+
+### Model 6
+
+For model5' residuals have high autocorrelation on 160 lags, we built model6 where we use 160 lagged values of residuals obtained from model5 aiming to predict the residuals and indirectly consumptions.
+
+
+```{r}
+data[ , residuals5_l_160 := shift(data$residuals5 , n = 160L ,  fill = 0 )]
+model6 <- lm(data$residuals5~  data$residuals5_l_160)
+summary(model6)
+data[ , residuals6 := residuals(model6)]
+data[ , prediction6 := fitted(model6) + data$prediction5 ]
+
+hist(residuals(model6) , breaks = 100)
+
+```
+
+
+```{r}
+acf(data$residuals6 , lag.max =  49)
+```
+
+
+### Model7 
+Realizing evident autocorrelation on the residuals of model6 on 48 lags, guided us to buil a model to predict model6' residuals by using 48 lagged values. This is how we built model7.
+
+```{r}
+data[ ,residuals6_l_48 := shift(data$residuals6 , n = 48L , fill = 0)]
+model7 = lm( data$residuals6 ~-1+ data$residuals6_l_48  )
+summary(model7)
+data[ , residuals7 := residuals(model7)]
+data[ ,prediction7 := fitted(model7) + prediction6]
+
+hist(residuals(model7), breaks = 100)
+```
+
+
+```{r}
+
+#plot(data$residuals7, data$T_1)
+#plot(data$residuals7, data$T_2)
+#plot(data$residuals7, data$T_3)
+#plot(data$residuals7, data$T_4)
+#plot(data$residuals7, data$T_5)
+#plot(data$residuals7, data$T_6)
+#plot(data$residuals7, data$T_7)
+
+ccf(data$residuals7 , data$T_1 , lag.max = 200)
+ccf(data$residuals7 , data$T_2 , lag.max = 200)
+ccf(data$residuals7 , data$T_3 , lag.max = 200)
+ccf(data$residuals7 , data$T_4 , lag.max = 200)
+ccf(data$residuals7 , data$T_5 , lag.max = 200)
+ccf(data$residuals7 , data$T_6 , lag.max = 200)
+ccf(data$residuals7 , data$T_7 , lag.max = 200)
+
+
+```
+
+### Model8
+
+After realizing a distinctive crosscorrelations between residuals of model7 and all of the temperature values, we built model8 where we tried to predict residuals of model7 by using 168 lagged (one week) temperature values.
+
+
+```{r}
+
+data[ ,T_1_l_168 := shift(data$T_1 , n = 168L , fill = mean(data$T_1))]
+data[ ,T_2_l_168 := shift(data$T_2 , n = 168L , fill = mean(data$T_2))]
+data[ ,T_3_l_168 := shift(data$T_3 , n = 168L , fill = mean(data$T_3))]
+data[ ,T_4_l_168 := shift(data$T_4 , n = 168L , fill = mean(data$T_4))]
+data[ ,T_5_l_168 := shift(data$T_5 , n = 168L , fill = mean(data$T_5))]
+data[ ,T_6_l_168 := shift(data$T_6 , n = 168L , fill = mean(data$T_6))]
+data[ ,T_7_l_168 := shift(data$T_7 , n = 168L , fill = mean(data$T_7))]
+
+model8 <- lm( data$residuals7 ~   data$T_1_l_168  +  data$T_2_l_168  +  data$T_3_l_168  +  data$T_4_l_168  +  data$T_5_l_168  +  data$T_6_l_168  +  data$T_7_l_168 )
+summary(model8)
+data[ , residuals8 := residuals(model8)]
+data[ ,prediction8 := fitted(model8) + prediction7]
+
+hist(residuals(model8), breaks = 100)
+
+``` 
+
+### Model9
+
+Since we did have previous days' consumption values for only a minority of the hours, we built an extra model where we utilized this consumption, where we used residuals of model6 with 24 lags.
+
+```{r}
+data[ , residuals8_l_24 := shift( x = data$residuals8 , n = 24L , fill = 0) ]
+model9 <- lm( data$residuals8 ~ -1 + data$residuals8_l_24 )
+summary(model9)
+data[ , residuals9 := residuals(model9)]
+data[ ,prediction9 := fitted(model9) + prediction8]
+
+hist(residuals(model9) , breaks = 100)
+```
+
+
+
+# Problems We Have Faced and our Approaches
+
+During this project, we faced 6 major problems. Presence of outlier observations, hourly fluctiations leading an overfit in regression models, presence of high number of observations reducing the affect of the most recent observations, varying lockdown strategies going on for almost a year, residuals obtained from our models are not being independent from the day and incomplete past data, that is we did not have all observations of day = "t" when we were trying to predict day = "t+1".
+
+## Outliers 
+
+The method we used in order to handle the outlier points was replacing them with their predictions. Since we knew the reason behind being an outlier was being a special day for the scope of this project and we were aware of we will not need to predict this points in the time of this project, discarding this observations was one of the most efficient and convinient method we kome up with.
+
+## Hourly Fluctaitions of Temperature Values
+
+In order to avoid the hourly fluctuations of temperature to cause an overfit in our model, we introduced a set of daily average temperatures for every day and every interested city.
+
+## High Number of Observations
+
+High number of observations leads most recent observations to lose their significance during linear regression. To avoid this problem, we discarded a majority of observations in our train data. 
+
+## Varying Lockdown Strategies
+
+Lockdown strategies differing leads an obstacle. The method we followed was benefiting from previous residuals. Since lockdown strategies have high autocorrelations, we utilized previous residuals in our model as regressors.
+
+## Residuals Being Dependent on Weekdays
+
+After using lagged residuals as regressors, we noticed that althought residuals have high autocorrelations, they were dependent on the weekdays, as mostly residuals of sundays highly differ. And this status created a difficulty while predicting sundays and using sundays' residuals as regressors. In order to handle this problem we came up with the idea of seperating sundays as a whole new dataset and building models by using same methods and regressors on it. But since we discovered this problem in a point where we do not have any sundas to predict, we did not coded this model.
+
+## Incomplete Past Data
+
+We did not have previous days' consumption observations in imported data set although some of the previous days' observations were published online(mostly between hours 0 and 9). And we realized that our residuals had hig autocorrelations on 24 lag. In order to improve our model, we manually entered most recent observations of the day we were in (hours 0-9).
+
+
+
+
+
+
+#8 Testing the Model
+
+After building this models, we tested that for the period of the month December 2020, whole month. Then we checked for its test statistics. And in order to compare this statistics, we buit a naive forecast model where we used previous days' consumption value as a prediction. As a result of this comparison, the wmape of our model was found as 0.02559587 where the wmape of the naive forecast model was found to be 0.05198948, indicates our model is better and useful comparing with naive forecast model.
+
+
+```{r}
+
+resultsp = vector('list' , 744)
+
+# 1 aralık 34344
+# 1 ocak 35088
+
+for(i in 0:30){
+  
+  datat = data[ index <= 34344 + 24*i]
+  
+  datat[ index >= 34344 - 37 + 24*i  ]$Consumption = -1
+  
+  
+  ############################################
+
+  model1 = lm(datat$Consumption~ datat$Average_T_1 +  datat$Average_T_2 + datat$Average_T_3 +datat$Average_T_4 + datat$Average_T_5 + datat$Average_T_6 +datat$Average_T_7 + datat$Hour  )
+datat[, residuals1 := residuals(model1)]
+datat[, prediction1 := fitted(model1)]
+
+model2 = lm(datat$Consumption~ datat$T_1 + datat$T_2 + datat$T_3 + datat$T_4 + datat$T_5 + datat$T_6 + datat$T_7  + datat$index + datat$Month + datat$Day + datat$Hour )
+datat[, residuals2 := residuals(model2)]
+datat[ , prediction2 := fitted(model2)]
+
+datat[ datat$residuals2 < -7000]$Consumption = datat[ datat$residuals2 < -7000]$prediction2
+datat[ datat$residuals2 > 8000]$Consumption = datat[ datat$residuals2 > 8000]$prediction2
+
+
+datat[,prevday2:=shift(x=datat$Consumption,n=48L,fill=mean(datat$Consumption))]
+datat[,prevweek:=shift(x=datat$Consumption,n=168L,fill=mean(datat$Consumption))]
+
+
+model3 = lm(datat$Consumption~datat$Day + datat$T_1 + datat$T_2 + datat$T_3 + datat$T_4 + datat$T_5 + datat$T_6 + datat$T_7   + datat$index + datat$Month + datat$Hour  + datat$prevday2  )
+datat[, residuals3 := residuals(model3)]
+datat[, prediction3 := fitted(model3)]
+
+
+model4 = lm(datat$Consumption~datat$Day + datat$Average_T_1 +  datat$Average_T_2 + datat$Average_T_3 +datat$Average_T_4 +datat$Average_T_5 +datat$Average_T_6 +datat$Average_T_7 + datat$index + datat$Month + datat$Hour + datat$prevweek +datat$prevday2 )
+datat[ , residuals4 := residuals(model4)]
+datat[ , prediction4 := fitted(model4)]
+
+datat[residuals4 < -5000]$Consumption = datat[residuals4 < -5000]$prediction4 
+datat[residuals4 > 55000]$Consumption = datat[residuals4 > 5500]$prediction4 
+
+model5 = lm(datat$Consumption~datat$Day + datat$Average_T_1 +  datat$Average_T_2 + datat$Average_T_3 +datat$Average_T_4 +datat$Average_T_5 +datat$Average_T_6 +datat$Average_T_7 + datat$index + datat$Month + datat$Hour  + datat$prevweek  + datat$prevday2)
+datat[ , residuals5 := residuals(model5)]
+datat[ , prediction5 := fitted(model5)]
+
+
+datat[ , residuals5_l_160 := shift(datat$residuals5 , n = 160L ,  fill = 0 )]
+
+model6 <- lm(datat$residuals5~  datat$residuals5_l_160)
+datat[ , residuals6 := residuals(model6)]
+datat[ , prediction6 := fitted(model6) + datat$prediction5 ]
+
+datat[ ,residuals6_l_48 := shift(datat$residuals6 , n = 48L , fill = 0)]
+
+model7 = lm( datat$residuals6 ~-1+ datat$residuals6_l_48  )
+datat[ , residuals7 := residuals(model7)]
+datat[ ,prediction7 := fitted(model7) + prediction6]
+
+datat[ ,T_1_l_168 := shift(datat$T_1 , n = 168L , fill = mean(datat$T_1))]
+datat[ ,T_2_l_168 := shift(datat$T_2 , n = 168L , fill = mean(datat$T_2))]
+datat[ ,T_3_l_168 := shift(datat$T_3 , n = 168L , fill = mean(datat$T_3))]
+datat[ ,T_4_l_168 := shift(datat$T_4 , n = 168L , fill = mean(datat$T_4))]
+datat[ ,T_5_l_168 := shift(datat$T_5 , n = 168L , fill = mean(datat$T_5))]
+datat[ ,T_6_l_168 := shift(datat$T_6 , n = 168L , fill = mean(datat$T_6))]
+datat[ ,T_7_l_168 := shift(datat$T_7 , n = 168L , fill = mean(datat$T_7))]
+
+model8 <- lm( datat$residuals7 ~   datat$T_1_l_168  +  datat$T_2_l_168  +  datat$T_3_l_168  +  datat$T_4_l_168  +  datat$T_5_l_168  +  datat$T_6_l_168  +  datat$T_7_l_168 )
+datat[ , residuals8 := residuals(model8)]
+datat[ ,prediction8 := fitted(model8) + prediction7]
+
+datat[ , residuals8_l_24 := shift( x = datat$residuals8 , n = 24L , fill = 0) ]
+
+model9 <- lm( datat$residuals8 ~ -1 + datat$residuals8_l_24 )
+datat[ , residuals9 := residuals(model9)]
+datat[ ,prediction9 := fitted(model9) + prediction8]
+
+  ############################################
+  
+
+resultsp[ 1 + 24*i] = datat[index == 34321 + 24*i]$prediction9
+resultsp[ 2 + 24*i] = datat[index == 34322+ 24*i]$prediction9
+resultsp[ 3 + 24*i] = datat[index == 34323 + 24*i]$prediction9
+resultsp[ 4 + 24*i] = datat[index == 34324 + 24*i]$prediction9
+resultsp[ 5 + 24*i] = datat[index == 34325 + 24*i]$prediction9
+resultsp[ 6 + 24*i] = datat[index == 34326 + 24*i]$prediction9
+resultsp[ 7 + 24*i] = datat[index == 34327 + 24*i]$prediction9
+resultsp[ 8 + 24*i] = datat[index == 34328 + 24*i]$prediction9
+resultsp[ 9 + 24*i] = datat[index == 34329 + 24*i]$prediction9
+resultsp[ 10 + 24*i] = datat[index == 34330+ 24*i]$prediction8
+resultsp[ 11 + 24*i] = datat[index == 34331+ 24*i]$prediction8
+resultsp[ 12 + 24*i] = datat[index == 34332+ 24*i]$prediction8
+resultsp[ 13 + 24*i] = datat[index == 34333+ 24*i]$prediction8
+resultsp[ 14 + 24*i] = datat[index == 34334+ 24*i]$prediction8
+resultsp[ 15 + 24*i] = datat[index == 34335+ 24*i]$prediction8
+resultsp[ 16 + 24*i] = datat[index == 34336+ 24*i]$prediction8
+resultsp[ 17 + 24*i] = datat[index == 34337+ 24*i]$prediction8
+resultsp[ 18 + 24*i] = datat[index == 34338+ 24*i]$prediction8
+resultsp[ 19 + 24*i] = datat[index == 34339+ 24*i]$prediction8
+resultsp[ 20 + 24*i] = datat[index == 34340+ 24*i]$prediction8
+resultsp[ 21 + 24*i] = datat[index == 34341+ 24*i]$prediction8
+resultsp[ 22 + 24*i] = datat[index == 34342+ 24*i]$prediction8
+resultsp[ 23 + 24*i] = datat[index == 34343+ 24*i]$prediction8
+resultsp[ 24 + 24*i] = datat[index == 34344+ 24*i]$prediction8
+
+
+}
+
+
+```
+
+
+
+```{r}
+
+Predictions = resultsp
+Predictions = rbind(Predictions)
+Predictions = t(Predictions)
+Predictions = as.data.table(Predictions[,1])
+Predictions = t(Predictions)
+Predictions = as.data.table(Predictions)
+colnames(Predictions) = c("Predictions")
+
+
+Observations = data[ index >= 34321 & index <= 35064]$Consumption
+Observations = data.table(Observations)
+colnames(Observations) = c("Actual")
+
+Naive = data[ index >= 34321 - 24 & index <= 35064- 24 ]$Consumption
+Naive = data.table(Naive)
+colnames(Naive) = c("Naive Forecast")
+
+
+testing = cbind(Predictions,Observations,Naive)
+
+
+output(testing$Actual , testing$Naive)
+output(testing$Actual , testing$Predictions)
+
+
+
+```
+
+
+
+
+# Conclusion
+
+Since our residuals obtained from mode8 are seem to be independent from temperature values, Months and hours; also they have few autocorrelations after 24 lags, we may consider this model as a complete prediction model. And its wmape being less than naive forecast's wmape value makes it a better choice.
+
+
+```{r}
+
+checkresiduals(model8)
+plot(data$T_1 , data$residuals8)
+plot(data$Month , data$residuals8)
+plot(data$Hour , data$residuals8)
+
+acf(data$residuals8 , lag.max = 24*7)
+
+```
+

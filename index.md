@@ -22,3 +22,12 @@
 [Here](files/HW4.html) is my Homework 4 report.  
 
 [Here](files/HW4.Rmd) is my Homework 4 code.
+
+
+## Project
+[Here](files/ie360_project.html) is my Project report with Hakan Ekiz.  
+
+[Here](files/ie360_project.Rmd) is my Project code with Hakan Ekiz.
+
+
+
