@@ -1,0 +1,196 @@
+---
+title: "ie360 hw5"
+author: "Mert Kaan"
+date: "2/18/2021"
+output: html_document
+---
+
+```{r, include=FALSE, echo=FALSE}
+
+setwd("~/Desktop")
+getwd()
+
+library(data.table)
+library(ggplot2)
+library(lubridate)
+library(readxl)
+library(forecast)
+library(GGally)
+
+```
+
+# Introduction
+
+The data which contains columns of SALES, APT, AGE, ANX, EXP, GP are as follows. In order to build a model where we estimate SALES, I have plotted a correlogram containing all of the columns.
+
+
+```{r, include=TRUE, echo=TRUE}
+
+data5 = read.table("sales.txt" , header = TRUE)
+data5 = as.data.table(data5)
+
+head(data5)
+
+```
+## Correlogram
+
+From this table, we can conclude that all variables except ANX seem to have high correlations with SALES values. Since the biggest correlation is the one with AGE, it would be useful to use it as a predictor in our initial model.
+
+
+```{r, include=TRUE, echo=TRUE}
+ggpairs(data5)
+```
+
+# Model1
+
+Since AGE has the highest correlation value, in the initial model I have added it as a predictor.
+
+
+```{r, include=TRUE, echo=TRUE}
+
+model1 = lm(data5$SALES ~ data5$AGE)
+summary(model1)
+
+```
+
+### Iterations Model1
+
+Then I have built every possible models which can be built by adding only one predictor. Comparing their anova results, I have realized that the one with the smallest p value was the one with APT as a regressor.
+
+
+```{r, include=TRUE, echo=TRUE}
+
+model1.1= lm(data5$SALES ~ data5$AGE +data5$APT)
+model1.2= lm(data5$SALES ~ data5$AGE +data5$ANX)
+model1.3= lm(data5$SALES ~ data5$AGE +data5$EXP)
+model1.4= lm(data5$SALES ~ data5$AGE +data5$GPA)
+
+anova(model1 , model1.1)
+anova(model1 , model1.2)
+anova(model1 , model1.3)
+anova(model1 , model1.4)
+
+```
+
+# Model2
+
+Yielding model 2 is as follows
+
+
+```{r, include=TRUE, echo=TRUE}
+
+model2 = lm(data5$SALES ~ data5$AGE + data5$APT)
+summary(model2)
+
+```
+
+### Reducing Model2 
+
+I have tried to discard previous predictor, AGE in this case. After building a model (model2.r) without AGE, I have checked anova results of model2 and model2.r, from the results we can conclude that AGE variable is significant and we can benefit from it. It would best to keep it as a predictor.
+
+
+```{r, include=TRUE, echo=TRUE}
+
+model2.r = lm(data5$SALES ~  data5$APT)
+
+anova(model2, model2.r)
+
+#age is significant, keep it
+```
+
+### Iterations Model2
+
+After building model2, I have added other predictor one by one and in order to check their significance I have printed the anova results of this models and our model2. It seems like no remaining possible predictors have an extra affect on the current prediction(model2), therefore I keep the model.
+
+
+```{r, include=TRUE, echo=TRUE}
+model2 = lm(data5$SALES ~ data5$AGE + data5$APT)
+
+model2.1= lm(data5$SALES ~ data5$AGE + data5$APT + data5$ANX)
+model2.2= lm(data5$SALES ~ data5$AGE + data5$APT + data5$EXP)
+model2.3= lm(data5$SALES ~ data5$AGE + data5$APT + data5$GPA)
+
+anova(model2 , model2.1)
+anova(model2 , model2.2)
+anova(model2 , model2.3)
+
+
+```
+
+
+# Using Step Function
+
+In order to check my results, I have buil a step model where my direction is forward as it was in my manually built model. The result of this function is same as I have found, which is using AGE and APT in order to predict SALES.
+
+
+```{r, include=TRUE, echo=TRUE}
+
+step( glm(SALES~1, family = gaussian , data = data5) , scope = SALES~ EXP + GPA + ANX + AGE + APT  , direction = "forward")
+
+
+```
+
+
+# Final Model
+
+As found both from manually built model and the model built by using step() function, our final model is;
+
+
+```{r, include=TRUE, echo=TRUE}
+
+model_final = lm(data5$SALES ~ data5$AGE + data5$APT )
+summary(model_final)
+
+```
+
+
+### Estimates
+
+Obtained from the summary of our final model, estimates are;
+Intercept              -83.8357
+AGE                     5.7969
+APT                     0.2015
+Residual Variance       14.3489
+
+
+
+
+## Testing Hypotesis
+
+In order to test wheter or not GPA data has an influence on SALES data based on my final model, I have added GPA data to my final model and checked the summary. 
+
+
+```{r, include=TRUE, echo=TRUE}
+
+model_hypotesis = lm(data5$SALES ~ data5$AGE + data5$APT + data5$GPA)
+summary(model_hypotesis)
+
+```
+
+### Test
+
+H0 -> GPA's influence on SALES is equal to 0
+H1 -> GPA's influence on SALES is not equal to 0
+
+a = 0.1
+p-value = 0.661
+
+Since our p-value is higher than 0.1, we fail to reject H0 this level of confidence.
+
+
+
+
+# Conclusion
+
+Our aim was to select appropriate predictors by testing a set of possible predictors, the two models which I have built manually and by using step() functions yields the same results. After ensuring the model was proper, I have tested if adding one more predictor (GPA) would make the model better by checking how much influance GPA have in the model. After doing so I have concluded that GDP data do not have a evidend extra affect.
+
+
+
+# References
+
+https://www.rdocumentation.org/packages/stats/versions/3.6.2/topics/step
+
+
+
+
+

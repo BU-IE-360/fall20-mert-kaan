@@ -30,4 +30,10 @@
 [Here](files/ie360_project.Rmd) is my Project code with Hakan Ekiz.
 
 
+## Homework 5
+[Here](files/ie360_hw5.html) is my Homework 5 report.   
+
+[Here](files/ie360_hw5.Rmd) is my Homework 5 code.
+
+
 
